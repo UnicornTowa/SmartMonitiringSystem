@@ -6,7 +6,7 @@ execution_path = os.getcwd()
 
 
 def get_path(n):
-    return os.path.join(os.getcwd(), "output", "second" + str(n) + ".txt")
+    return os.path.join(execution_path, "output", "second" + str(n) + ".txt")
 
 
 def get_distance(a, b):
@@ -26,6 +26,7 @@ while True:
         first = True
         current_second = open(path, "r")
         noreturn = False
+        good_line_count = 0
         for i in range(5):
             #  print("Frame number " + str(i + 1))
             line = current_second.readline()
@@ -35,6 +36,7 @@ while True:
                     person = person.split(" ")
                     center = [round((int(person[0]) + int(person[2])) / 2),
                               round((int(person[1]) + int(person[3])) / 2)]
+                    good_line_count += 1
                     if first:
                         first_mid_x = center[0]
                         current_mid = center
@@ -49,7 +51,7 @@ while True:
                 break
         # print(first_mid_x)
         # print(current_mid[0])
-        if current_mid and first_mid_x and not noreturn:
+        if current_mid and first_mid_x and not noreturn and good_line_count >= 3:
             if current_mid[0] > first_mid_x:
                 print("MOVING RIGHT")
             else:

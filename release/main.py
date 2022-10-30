@@ -144,11 +144,11 @@ while True:
             if abs(diff) < 50:
                 print("STANDING")
             elif diff > 0:
-                print("MOVING LEFT, sending")
-                ipv8.get_overlay(MyCommunity).send("Person coming from right side")
+                print("MOVING LEFT")
+                ipv8.get_overlay(MyCommunity).send("Person coming")
             else:
-                print("MOVING RIGHT, no neighbour")
-                ipv8.get_overlay(MyCommunity).send("Person coming from left side")
+                print("MOVING RIGHT")
+                #  ipv8.get_overlay(MyCommunity).send("Person coming")
         num_of_seconds += 1
     else:
         sleep(0.05)

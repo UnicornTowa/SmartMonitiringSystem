@@ -1,2 +1,2 @@
-cd \Users\tosha\PycharmProjects\SmartMonitoring
+cd \Users\tosha\PycharmProjects\SmartMonitoring\release
 mkdir output

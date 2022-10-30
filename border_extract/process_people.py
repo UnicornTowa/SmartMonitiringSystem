@@ -56,9 +56,9 @@ while True:
             if abs(diff) < 50:
                 print("STANDING")
             elif diff > 0:
-                print("MOVING RIGHT")
-            else:
                 print("MOVING LEFT")
+            else:
+                print("MOVING RIGHT")
         num_of_seconds += 1
     else:
         sleep(0.05)

@@ -52,7 +52,10 @@ while True:
         # print(first_mid_x)
         # print(current_mid[0])
         if current_mid and first_mid_x and not noreturn and good_line_count >= 3:
-            if current_mid[0] > first_mid_x:
+            diff = current_mid[0] - first_mid_x
+            if abs(diff) < 50:
+                print("STANDING")
+            elif diff > 0:
                 print("MOVING RIGHT")
             else:
                 print("MOVING LEFT")

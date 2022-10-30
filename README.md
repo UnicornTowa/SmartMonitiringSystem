@@ -1,1 +1,1 @@
-# SmartMonitiringSystem
+# SmartMonitoringSystem

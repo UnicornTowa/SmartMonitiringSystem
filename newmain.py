@@ -233,10 +233,10 @@ def per_second(second_number, output_arrays, count_arrays, average_output_count,
         for person in output_arrays[i]:
             hashdif = []
             for sample in people:
-                hashdif.append(ih.colorhash(person["box_points"])-sample.hashim)
+                hashdif.append(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"]))-sample.hashim)
 
             if min(hashdif) > 6:
-                people.append(Person(ih.colorhash(person["box_points"]), person["box_points"]))
+                people.append(Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])), person["box_points"]))
             else:
                 ind = hashdif.index(min(hashdif))
                 people[ind].new_coord(person["box_points"])
@@ -246,18 +246,18 @@ def per_second(second_number, output_arrays, count_arrays, average_output_count,
         first_mid_x = 0
         first = True
         noreturn = False
-        for j in range(5):
+        for j in range(len(line)):
             center = [round((line[j][0] + line[j][2]) / 2), round((line[j][1] + line[j][3]) / 2)]
             if first:
                 first_mid_x = center[0]
                 current_mid = center
                 first = False
 
-            elif current_mid and get_distance(current_mid, center) < 100:
+            elif get_distance(current_mid, center) < 100:
                 current_mid = center
             else:
                 noreturn = True
-        if current_mid and first_mid_x and not noreturn:
+        if not noreturn:
             im = Image.fromarray(returned_frame).crop(line[0])
             hashim = ih.colorhash(im)
             for imhash in upcoming_hashes:

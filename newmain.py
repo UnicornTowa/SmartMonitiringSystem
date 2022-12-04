@@ -69,7 +69,14 @@ class MyPeer:
 all_peers = {}
 ids = []
 
-
+class Person:
+    hashim = 0
+    line = []
+    def __init__(self, hashim,coord):
+        self.hashim = hashim
+        self.line.append(coord)
+    def new_coord(self,stack):
+        self.line.append(stack)
 class MyCommunity(Community):
     community_id = bytes([254, 10, 128, 88, 75, 5, 188, 130, 10, 151, 179, 240, 26, 88, 125, 221, 44, 223, 239, 217])
 
@@ -219,13 +226,22 @@ custom = detector.CustomObjects(person=True)
 
 
 def per_second(second_number, output_arrays, count_arrays, average_output_count, returned_frame):
-    num_of_people = len(output_arrays[0])
+    people = []
+    for person in output_arrays[0]:
+        people.append(Person(ih.colorhash(person["box_points"]), person["box_points"]))
     for i in range(1, 5):
-        num_of_people = min(num_of_people, len(output_arrays[i]))
-    for i in range(num_of_people):
-        line = []
-        for frame in output_arrays:
-            line.append(frame[i]["box_points"])
+        for person in output_arrays[i]:
+            hashdif = []
+            for sample in people:
+                hashdif.append(ih.colorhash(person["box_points"])-sample.hashim)
+
+            if min(hashdif) > 6:
+                people.append(Person(ih.colorhash(person["box_points"]), person["box_points"]))
+            else:
+                ind = hashdif.index(min(hashdif))
+                people[ind].new_coord(person["box_points"])
+    for i in range(len(people)):
+        line = people[i].line
         current_mid = []
         first_mid_x = 0
         first = True

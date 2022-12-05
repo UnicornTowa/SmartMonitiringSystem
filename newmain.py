@@ -72,11 +72,18 @@ ids = []
 class Person:
     hashim = 0
     line = []
-    def __init__(self, hashim,coord):
+    current_node = -1
+    last_frame = -1
+    def __init__(self, hashim,coord,frame):
         self.hashim = hashim
         self.line.append(coord)
+        self.last_frame = frame
     def new_coord(self,stack):
         self.line.append(stack)
+    def change_node(self, node):
+        self.current_node = node
+    def del_coord(self):
+        self.line = []
 class MyCommunity(Community):
     community_id = bytes([254, 10, 128, 88, 75, 5, 188, 130, 10, 151, 179, 240, 26, 88, 125, 221, 44, 223, 239, 217])
 
@@ -134,7 +141,8 @@ def open_peer():
             "MyCommunity",
             "my peer",
             [WalkerDefinition(Strategy.RandomWalk, 10, {'timeout': 3.0})],
-            [BootstrapperDefinition(Bootstrapper.UDPBroadcastBootstrapper, {})],
+            # [BootstrapperDefinition(Bootstrapper.UDPBroadcastBootstrapper, {})],
+            default_bootstrap_defs,
             {}, [('started',)])
         ipv8 = IPv8(builder.finalize(), extra_communities={'MyCommunity': MyCommunity})
         await ipv8.start()
@@ -223,23 +231,33 @@ detector.setModelTypeAsYOLOv3()
 detector.setModelPath(os.path.join(execution_path, "yolo.h5"))
 detector.loadModel(detection_speed="flash")
 custom = detector.CustomObjects(person=True)
-
-
-def per_second(second_number, output_arrays, count_arrays, average_output_count, returned_frame):
-    people = []
-    for person in output_arrays[0]:
-        people.append(Person(ih.colorhash(person["box_points"]), person["box_points"]))
-    for i in range(1, 5):
-        for person in output_arrays[i]:
+people = []
+old_people = []
+#TODO Если пришло сообщение, что человеек дошел, то перемещаем его в old_people и сохраняем только текуз=щий узел, чистя координаты
+def per_frame(frame_number, output_array, output_count, returned_frame):
+    global people
+    if (frame_number-1) % 5 == 0:
+        for person in people:
+            #TODO костыль, по-другому не придумал
+            person.del_coord()
+    print(frame_number)
+    for person in output_array:
+        if len(people) == 0:
+            people.append(
+                Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])), person["box_points"], frame_number))
+        else:
             hashdif = []
             for sample in people:
                 hashdif.append(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"]))-sample.hashim)
 
             if min(hashdif) > 6:
-                people.append(Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])), person["box_points"]))
+                people.append(Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])), person["box_points"], frame_number))
             else:
                 ind = hashdif.index(min(hashdif))
                 people[ind].new_coord(person["box_points"])
+                people[ind].current_node = frame_number
+def per_second(second_number, output_arrays, count_arrays, average_output_count, returned_frame):
+    global people
     for i in range(len(people)):
         line = people[i].line
         current_mid = []
@@ -257,13 +275,14 @@ def per_second(second_number, output_arrays, count_arrays, average_output_count,
                 current_mid = center
             else:
                 noreturn = True
-        if not noreturn:
-            im = Image.fromarray(returned_frame).crop(line[0])
-            hashim = ih.colorhash(im)
+        if not noreturn and current_mid:
+            hashim = people[i].hashim
             for imhash in upcoming_hashes:
                 if hashim - imhash <= 3:
                     write_to_current(hashim)
-                    upcoming_hashes.pop(imhash)
+                    upcoming_hashes.remove(imhash)
+                    #TODO Отправлять сообщение обратно, что дошел
+
                     print('Detected upcoming')
             diff = current_mid[0] - first_mid_x
             if abs(diff) < 50:
@@ -274,19 +293,24 @@ def per_second(second_number, output_arrays, count_arrays, average_output_count,
                 send_to_peer(l, '%' + str(hashim))
                 for imhash in current_hashes:
                     if imhash - hashim <= 3:
-                        current_hashes.pop(imhash)
+                        current_hashes.remove(imhash)
+                        # TODO обновлять текующую ноду
             else:
                 print("MOVING RIGHT, sending")
                 send_to_peer(r, 'Person is coming from ' + rs + ' side')
                 send_to_peer(r, '%' + str(hashim))
                 for imhash in current_hashes:
                     if imhash - hashim <= 3:
-                        current_hashes.pop(imhash)
+                        current_hashes.remove(imhash)
+                        # TODO обновлять текующую ноду
 
+
+#TODO Добавить ll и rr прописать суенарии выпада ноды и ее камбека, добавления новых нод уже во время работы. Как проверять что нода выпала?
 
 detector.detectObjectsFromVideo(camera_input=cam, custom_objects=custom,
                                 save_detected_video=False,
                                 frames_per_second=5,
+                                per_frame_function=per_frame,
                                 per_second_function=per_second,
                                 minimum_percentage_probability=70,
                                 return_detected_frame=True

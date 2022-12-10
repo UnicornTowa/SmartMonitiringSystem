@@ -1,37 +1,31 @@
 import os
-from asyncio import Task, as_completed, ensure_future, get_event_loop, new_event_loop, set_event_loop
+from asyncio import ensure_future, get_event_loop, new_event_loop, set_event_loop
+from base64 import b64encode
 from dataclasses import dataclass
+from math import sqrt
+from threading import Event
+from threading import Thread
+from time import sleep
+from time import time
+
+import cv2
+import imagehash as ih
+from PIL import Image
+from imageai.Detection import VideoObjectDetection
 
 from pyipv8.ipv8.community import Community
 from pyipv8.ipv8.configuration import ConfigBuilder, Strategy, WalkerDefinition
-from pyipv8.ipv8.configuration import Bootstrapper, BootstrapperDefinition, default_bootstrap_defs
+from pyipv8.ipv8.configuration import default_bootstrap_defs
 from pyipv8.ipv8.lazy_community import lazy_wrapper
 from pyipv8.ipv8.messaging.payload_dataclass import overwrite_dataclass
-from pyipv8.ipv8_service import IPv8
 from pyipv8.ipv8.peer import Peer
-
-import string
-import random
-from threading import Thread
-from threading import Event
-import _thread
-
-from time import sleep
-from math import sqrt
-from base64 import b64encode
-from time import time
-
-import glob
-from imageai.Detection import VideoObjectDetection
-import cv2
-from PIL import Image
-import imagehash as ih
-from math import sqrt
+from pyipv8.ipv8_service import IPv8
 
 current_hashes = []
 upcoming_hashes = []
 
 stop = 1
+
 
 def write_to_upcoming(imagehash_str):
     imagehash_str = ih.hex_to_flathash(imagehash_str, 3)
@@ -69,21 +63,37 @@ class MyPeer:
 all_peers = {}
 ids = []
 
+
 class Person:
     hashim = 0
     line = []
     current_node = -1
     last_frame = -1
-    def __init__(self, hashim,coord,frame):
+
+    def __init__(self, hashim, coord, frame):
         self.hashim = hashim
         self.line.append(coord)
         self.last_frame = frame
-    def new_coord(self,stack):
+
+    def new_coord(self, stack):
         self.line.append(stack)
+
     def change_node(self, node):
         self.current_node = node
+
     def del_coord(self):
         self.line = []
+
+
+def change_node(peer, hash):
+    global people
+    people_hash = [i.hashim for i in people]
+    if hash in people_hash:
+        ind = people_hash.index(hash)
+        people[ind].del_coord()
+        # people[ind].change_node(TODO поменять ноду)
+
+
 class MyCommunity(Community):
     community_id = bytes([254, 10, 128, 88, 75, 5, 188, 130, 10, 151, 179, 240, 26, 88, 125, 221, 44, 223, 239, 217])
 
@@ -120,9 +130,11 @@ class MyCommunity(Community):
     @lazy_wrapper(MyMessage)
     def on_message(self, peer, payload):
         message = str(payload.text)
-        if message == 'startall':
+        if "detect" in message:
+            change_node(peer, message[message.index("%") + 1:])
+        elif message == 'startall':
             stop = 0
-        if message[0] == '%':
+        elif message[0] == '%':
             write_to_upcoming(message.split('%')[1])
         print(peer, ':', payload.text)
 
@@ -233,31 +245,46 @@ detector.loadModel(detection_speed="flash")
 custom = detector.CustomObjects(person=True)
 people = []
 old_people = []
-#TODO Если пришло сообщение, что человеек дошел, то перемещаем его в old_people и сохраняем только текуз=щий узел, чистя координаты
+
+
 def per_frame(frame_number, output_array, output_count, returned_frame):
     global people
-    if (frame_number-1) % 5 == 0:
+    if (frame_number - 1) % 5 == 0:
         for person in people:
-            #TODO костыль, по-другому не придумал
+            # TODO костыль, по-другому не придумал
             person.del_coord()
-    print(frame_number)
     for person in output_array:
         if len(people) == 0:
             people.append(
-                Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])), person["box_points"], frame_number))
+                Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])), person["box_points"],
+                       frame_number))
         else:
             hashdif = []
             for sample in people:
-                hashdif.append(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"]))-sample.hashim)
+                hashdif.append(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])) - sample.hashim)
 
             if min(hashdif) > 6:
-                people.append(Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])), person["box_points"], frame_number))
+                people.append(Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])),
+                                     person["box_points"], frame_number))
             else:
                 ind = hashdif.index(min(hashdif))
-                people[ind].new_coord(person["box_points"])
-                people[ind].current_node = frame_number
+                k = 1
+                s_hashdif = sorted(hashdif)
+                while people[ind].current_node not in [l, r, -1] and k != len(hashdif):
+                    new_min = s_hashdif[k]
+                    k += 1
+                    ind = hashdif.index(new_min)
+                if people[ind].current_node in [l, r, -1]:
+                    people[ind].new_coord(person["box_points"])
+                    people[ind].current_node = -1
+                else:
+                    people.append(Person(ih.colorhash(Image.fromarray(returned_frame).crop(person["box_points"])),
+                                         person["box_points"], frame_number))
+
+
 def per_second(second_number, output_arrays, count_arrays, average_output_count, returned_frame):
     global people
+    # print(ids)
     for i in range(len(people)):
         line = people[i].line
         current_mid = []
@@ -281,7 +308,8 @@ def per_second(second_number, output_arrays, count_arrays, average_output_count,
                 if hashim - imhash <= 3:
                     write_to_current(hashim)
                     upcoming_hashes.remove(imhash)
-                    #TODO Отправлять сообщение обратно, что дошел
+                    send_to_peer(l, "detect %" + hashim)
+                    send_to_peer(r, "detect %" + hashim)
 
                     print('Detected upcoming')
             diff = current_mid[0] - first_mid_x
@@ -305,7 +333,7 @@ def per_second(second_number, output_arrays, count_arrays, average_output_count,
                         # TODO обновлять текующую ноду
 
 
-#TODO Добавить ll и rr прописать суенарии выпада ноды и ее камбека, добавления новых нод уже во время работы. Как проверять что нода выпала?
+# TODO Добавить ll и rr прописать суенарии выпада ноды и ее камбека, добавления новых нод уже во время работы. Как проверять что нода выпала?
 
 detector.detectObjectsFromVideo(camera_input=cam, custom_objects=custom,
                                 save_detected_video=False,

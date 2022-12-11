@@ -133,52 +133,64 @@ class MyCommunity(Community):
     def on_message(self, peer, payload):
         global stop, r, l, rr, ll
         message = str(payload.text)
-        if "detect" in message:
-            change_node(peer, message[message.index("%") + 1:])
-        elif message == 'startall':
-            stop = 0
-        elif message[0] == '%':
-            write_to_upcoming(message.split('%')[1])
-        elif 'set!' in message:
-            message = message.split(' ')
-            if message[1] == 'r':
-                r = ids.index(peer)
-                print('Forced to new r')
-                send_to_peer(r, 'request! r')
-            elif message[1] == 'l':
-                l = ids.index(peer)
-                print('Forced to new l')
-                send_to_peer(r, 'request! l')
-        elif 'request!' in message:
-            message = message.split(' ')
-            if message[1] == 'r':
-                if r == -1:
-                    ipv8.get_overlay(MyCommunity).ez_send(peer, MyMessage('rr=' + '-1'))
+        if message != '':
+            if "detect" in message:
+                change_node(peer, message[message.index("%") + 1:])
+            elif message == 'startall':
+                stop = 0
+            elif message[0] == '%':
+                write_to_upcoming(message.split('%')[1])
+            elif 'set!' in message:
+                message = message.split(' ')
+                if message[1] == 'r':
+                    r = ids.index(peer)
+                    print('Forced to new r')
+                    send_to_peer(r, 'request! r')
+                    send_to_peer(l, 'request! me')
+                elif message[1] == 'l':
+                    l = ids.index(peer)
+                    print('Forced to new l')
+                    send_to_peer(l, 'request! l')
+                    send_to_peer(r, 'request! me')
+            elif 'request!' in message:
+                message = message.split(' ')
+                if message[1] == 'me':
+                    try:
+                        ind = ids.index(peer)
+                    except:
+                        ind = -1
+                    if r == ind and ind != -1:
+                        send_to_peer(r, 'request! r')
+                    elif l == ind and l != -1:
+                        send_to_peer(l, 'request! l')
+                elif message[1] == 'r':
+                    if r == -1:
+                        ipv8.get_overlay(MyCommunity).ez_send(peer, MyMessage('rr=' + '-1'))
+                    else:
+                        ipv8.get_overlay(MyCommunity).ez_send(peer, MyMessage('rr=' + b64encode(ids[int(r)].mid).decode('utf-8')))
+                elif message[1] == 'l':
+                    if l == -1:
+                        ipv8.get_overlay(MyCommunity).ez_send(peer, MyMessage('ll=' + '-1'))
+                    else:
+                        ipv8.get_overlay(MyCommunity).ez_send(peer, MyMessage('ll=' + b64encode(ids[int(l)].mid).decode('utf-8')))
+            elif 'rr=' in message:
+                ident = message.split('rr=')[1]
+                if ident == '-1':
+                    rr = -1
                 else:
-                    ipv8.get_overlay(MyCommunity).ez_send(peer, MyMessage('rr=' + b64encode(ids[int(r)].mid).decode('utf-8')))
-            if message[1] == 'l':
-                if l == -1:
-                    ipv8.get_overlay(MyCommunity).ez_send(peer, MyMessage('ll=' + '-1'))
+                    for p in all_peers.values():
+                        if b64encode(p.peer.mid).decode('utf-8') == ident:
+                            rr = ids.index(p.peer)
+                            print('new rr = ' + b64encode(ids[rr].mid).decode('utf-8'))
+            elif 'll=' in message:
+                ident = message.split('ll=')[1]
+                if ident == '-1':
+                    ll = -1
                 else:
-                    ipv8.get_overlay(MyCommunity).ez_send(peer, MyMessage('ll=' + b64encode(ids[int(l)].mid).decode('utf-8')))
-        elif 'rr=' in message:
-            ident = message.split('rr=')[1]
-            if ident == '-1':
-                rr = -1
-            else:
-                for p in all_peers.values():
-                    if b64encode(p.peer.mid).decode('utf-8') == ident:
-                        rr = ids.index(p.peer)
-                        print('new rr = ' + b64encode(ids[rr].mid).decode('utf-8'))
-        elif 'll=' in message:
-            ident = message.split('ll=')[1]
-            if ident == '-1':
-                ll = -1
-            else:
-                for p in all_peers.values():
-                    if b64encode(p.peer.mid).decode('utf-8') == ident:
-                        ll = ids.index(p.peer)
-                        print('new ll = ' + b64encode(ids[ll].mid).decode('utf-8'))
+                    for p in all_peers.values():
+                        if b64encode(p.peer.mid).decode('utf-8') == ident:
+                            ll = ids.index(p.peer)
+                            print('new ll = ' + b64encode(ids[ll].mid).decode('utf-8'))
         print(peer, ':', payload.text)
 
 
@@ -244,13 +256,24 @@ def check_rl():
     global r, rr, l, ll
     if r != -1 and not get_status(r):
         r = rr
+        rr = -1
         print('moved to rr')
         print(ids[rr])
         send_to_peer(r, 'request! r')
-    if l != -1 and not get_status(l):
+        if r == -1:
+            print('System broke into 2 sections')
+    elif l != -1 and not get_status(l):
         l = ll
+        ll = -1
         print('moved to ll')
         send_to_peer(l, 'request! l')
+        if l == -1:
+            print('System broke into 2 sections')
+    if rr != -1 and not get_status(rr):
+        send_to_peer(r, 'request! r')
+    elif ll != -1 and not get_status(ll):
+        send_to_peer(l, 'request! l')
+
 
 
 
@@ -273,6 +296,7 @@ if os.path.exists('config.txt'):
                         r = int(ids.index(p.peer))
                         print('found r')
                         send_to_peer(r, 'set! l')
+                        send_to_peer(r, 'request! r')
             left = f.readline().split(' ')[0].split('l=')[1].rstrip()
             if left == '-1':
                 l = -1
@@ -282,6 +306,7 @@ if os.path.exists('config.txt'):
                         l = int(ids.index(p.peer))
                         print('found l')
                         send_to_peer(l, 'set! r')
+                        send_to_peer(l, 'request! l')
             print('Use config: r = ' + str(r) + '\n' + 'l = ' + str(l))
 
 ready = 0
